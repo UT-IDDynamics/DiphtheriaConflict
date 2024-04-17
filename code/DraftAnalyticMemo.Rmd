@@ -1,0 +1,48 @@
+---
+title: "PHS7020 Draft Analytic Memo"
+author: "Tierney O'Sullivan"
+date: "2024-02-27"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Research question
+Are conflict events associated with reported diphtheria cases in sub-Saharan African countries at a subnational level?
+
+## Brief background
+With the advent of the three-dose diphtheria pertussis tetanus (DPT) vaccine over a half century ago, public health officials were optimistic that mass vaccination campaigns across the globe would prevent large-scale diphtheria outbreaks. In high income countries, this prediction has largely proven to be true; diphtheria infections went from being the . However, in recent years, respiratory diphtheria outbreaks have been re-emerging, especially in low-resource settings and among populations without adequate DPT vaccine coverage. Unfortunately, due to the collective optimism surrounding the DPT vaccine, many countries and health agencies have failed to prepare for large outbreaks and thus the supply of diphtheria anti-toxin is critically low. 
+
+
+
+
+Hypothesis: Prior conflict event occurrences in state or provinces
+## Aims
+
+We aim to test the above hypothesis in a model with the primary outcome of interest is the number of reported diphtheria cases at a subnational level (adminsitrative region level 1, or ADM1).
+
+
+to predict the number of reported respiratory diphtheria cases as reported weekly in the WHO African region’s bulletin on outbreaks and other emergencies, which report on new cases of diphtheria at a sub-national level. We plan to use a zero-inflated Poisson regression timeseries model to investigate the role of potential predictors of reported diphtheria cases at each ADM1 level, particularly the number of conflict events reported by the Armed Conflict Location & Event Data Project (ACLED), and the most recently available reported state or province levels of childhood DPT3 vaccine coverage reported by Demographic Health Surveys (DHS). Since the ACLED conflict data are updated in real time, we are hoping that it can be used as an early predictor of the subnational geographic relative risk of diphtheria outbreaks which can inform epidemic control strategies.
+
+## Conceptual model,
+
+
+## Data description
+
+Diphtheria cases 
+
+## Inclusion/exclusion/cohort derivation
+
+
+
+## Main variables including derived variables
+
+## Analytic workflow
+
+## Analytic plan – descriptive and inferential
+
+
+
+## Mock tables and figures
