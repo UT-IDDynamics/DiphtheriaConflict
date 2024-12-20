@@ -1,2 +1,5 @@
 acled_access_key.R
 *.DS_STORE
+.Rproj.user
+data/GADM/gadm_410-levels.gpkg
+data/LandScan/landscan-global-2022-assets/landscan-global-2022.tif
