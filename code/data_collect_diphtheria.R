@@ -2,7 +2,7 @@
 ########## Data collection script             ###########################
 ########## Diphtheria model WHO region Africa ###########################
 ########## Author: Tierney O'Sullivan         ###########################
-########## Date last modified: 2024-04-13     ###########################
+########## Date last modified: 2025-01-06     ###########################
 #########################################################################
 
 ## libraries
@@ -10,81 +10,56 @@ library(here)
 library(stringr)
 library(readr)
 library(dplyr)
-library(RcppRoll)
 library(padr)
 library(sf)
 library(units)
 library(tidyr)
 library(ISOcodes)
+library(ISOweek)
+library(lubridate)
+library(padr)
+library(tibbletime)
 # set working directory to current folder
 setwd(here())
 
+
+#### Country list ######
+country_list = read_csv("data/DHS/Exclusion_inclusion_criteria.csv") %>% select(GID_0)
+country_list = country_list %>% filter(!is.na(GID_0))
+country_list = country_list$GID_0
+
 ##### Geographic data ######
-polys <- readRDS("~/EbolaCentralAfrica2020-files/data/HealthDistricts_CA_Data_allstationary.rds")
-polys <- polys[!(polys$ADM2_NAME %in% c("KABWE RURAL", "TORORO & PALLISA")),] # remove health zones that have no land mass
-polys_sf <- st_as_sf(polys)
+polys <- readRDS("data/geographies/ADM1_pop.rds") 
+polys <- polys[(polys$GID_0 %in% country_list),] # remove countries that are excluded
+polys_sf <- st_make_valid(polys)
+# get area of each ADM1 region
 area <- st_area(polys_sf) %>% units::set_units(., km^2)
-centroids <- data.frame(ADM2_NAME=polys$ADM2_NAME,X=polys$CENTER_LON, Y=polys$CENTER_LAT)
+# get centroids of each ADM1 region
+centroids = st_centroid(polys_sf)
+
+# get list of complete set of GID_1 data
+polys_idsonly = polys_sf %>% st_drop_geometry() 
+# centroids <- data.frame(ADM1_NAME=polys$NAME_1,X=polys$CENTER_LON, Y=polys$CENTER_LAT)
 #region <- as.integer(as.factor(polys$ISO))
 
 
-###### Establish countries ################
-countries = read_csv("data/country_list.csv", col_names = "Name") %>% 
-  mutate(Name = case_when(Name == "C\x99te d'Ivoire" ~ "Côte d'Ivoire",
-                          TRUE ~ Name))
 
-country_df = ISO_3166_1 %>% filter(Name %in% countries$Name | Official_name %in% countries$Name | Common_name %in% countries$Name)
 ###### ACLED Time-varying conflict status ############
 
 ## create time varying matrices of conflict
 # Armed Conflict in Infected Health zones
 
-# get country codes from acled_iso_codes (downloaded from ACLED website: https://www.acleddata.com/download/3987/)
+# to upload pre-downloaded data 
+file_names_acled = paste0("data/conflict_all/", list.files("data/conflict_all/"))
 
-acled_iso = read_csv("data/conflict/acled_iso_codes.csv",col_names = c("Name", "Region", "Start_date", "ISO_numeric"), skip = 1) %>%
-  mutate(ISO_numeric_pad = str_pad(ISO_numeric, width = 3, side = "left", pad = "0"))
+acled_total = do.call(rbind,
+                      lapply(file_names_acled, 
+                             read_csv, col_select = c(event_date, year, disorder_type, event_type, 
+                                                      civilian_targeting, iso:admin1, latitude, 
+                                                      longitude, fatalities)))
 
-acled_iso_use = acled_iso %>% filter(ISO_numeric_pad %in% country_df$Numeric)
 
-country_df = country_df %>% left_join(acled_iso_use %>% select(Numeric = ISO_numeric_pad, Acled_numeric = ISO_numeric))
 
-# to download new data
-# load API key
-source("code/acled_access_key.R")
-# myurl <- paste0("https://api.acleddata.com/acled/read?terms=accept&t&last_event_date={2018-06-01|2020-06-25}&last_event_date_where=BETWEEN&country=Democratic%20Republic%20of%20Congo&country_where=%3D&limit=0&key=", acled_api_key, "&email=t.osullivan@utah.edu")
-myurl <- paste0("https://api.acleddata.com/acled/read?key=", acled_api_key, "&email=t.osullivan@utah.edu&year=2017|2024&year_where=BETWEEN&iso=180&iso_where=%3D&limit=0")
-
-for (i in 1:nrow(country_df)){
-  iso_num = country_df$Acled_numeric[i]
-  iso3 = country_df$Alpha_3[i]
-  
-  myurl <- paste0("https://api.acleddata.com/acled/read?key=", acled_api_key, "&email=t.osullivan@utah.edu&year=2017|2024&year_where=BETWEEN&iso=",iso_num,"&iso_where=%3D&limit=0")
-  
-  
-  acled_js <- jsonlite::fromJSON(myurl)
-  acled <- acled_js$data
-  write.csv(acled, paste0("data/conflict/2017_2024_", iso3,".csv"))
-  
-}
-
-# single country examples
-# myurl <- paste0("https://api.acleddata.com/acled/read?key=", acled_api_key, "&email=t.osullivan@utah.edu&year=2017|2024&year_where=BETWEEN&iso=24&iso_where=%3D&limit=0")
-# 
-# 
-# acled_js <- jsonlite::fromJSON(myurl)
-# acled <- acled_js$data
-# write.csv(acled, paste0("data/conflict/2017_2024", "Angola.csv"))
-
-# to upload pre-downloaded data for time period of interest
-acled <- read.csv("data/conflict/2018-03-13-2021-03-19-Democratic_Republic_of_Congo.csv")
-# https://api.acleddata.com/{data}/{command}.csv need to figure out how to automate this
-polys <- readRDS("data/HealthDistricts_CA_Data_noroads.rds")
-polys_sf <- st_as_sf(polys)
-
-# changing event_date to Date format
-acled <- acled %>% mutate(event_date = as.Date(event_date, format = "%d %B %Y")) %>% 
-  # filter data to include time period of the outbreak
-  filter(event_date >= "2018-06-01" & event_date <= "2020-06-25")
 
 fun_add_week_start_acled <- function(x){
   # start of the week = Monday
@@ -97,22 +72,176 @@ fun_add_week_start_acled <- function(x){
                                                           Weekday == "Sunday" ~ event_date - 6,
                                                           Weekday == "Monday" ~ event_date
   ))
-  firstweek <- as.Date("2018-05-28")
+  firstweek <- as.Date("2017-01-01")
   tmp <- tmp %>% 
-    # mutate(event_date_week_num = as.numeric(difftime(event_date_week_start, firstweek, units = "weeks"), units = "weeks" )) %>%
-    mutate(event_date_week_end = event_date_week_start + 21) %>%
-    # mutate(event_date_week_num_end = event_date_week_num + 3)
+    mutate(isoweek = isoweek(event_date)) %>%
     return(tmp)
   
 }
 
-acled <- fun_add_week_start_acled(acled)
+acled <- fun_add_week_start_acled(acled_total)
 
-# selecting variables of interest
-acled <- acled %>% select(data_id, event_id_cnty, event_date, year, event_type, sub_event_type, 
-                          country, admin1, admin2, latitude, longitude, notes, fatalities, iso3, 
-                          event_date_week_start, 
-                          #event_date_week_num, 
-                          event_date_week_end, 
-                          #event_date_week_num_end
-)
+# convert to simple features data frame
+acled_sf <- st_as_sf(acled, coords = c("longitude","latitude"), crs = "+proj=longlat +datum=WGS84 +no_defs +ellps=WGS84 +towgs84=0,0,0")
+
+acled_buff <- st_buffer(acled_sf, dist = 0.08999) # buffer around conflict points = 10,000 m, which is approximately 0.08999 arc degrees near the equator
+polys_acled_join <- st_join(polys_sf, acled_buff, left = F)
+
+#### create a weekly count of conflict evens 
+acled_weekly_data = polys_acled_join %>% 
+  st_drop_geometry %>%
+  group_by(GID_0, COUNTRY, GID_1, NAME_1,year, isoweek) %>% 
+  summarise(n_conflict_events_isoweek_adm1 = n(),
+            n_fatalities_isoweek_adm1 = sum(fatalities)) %>%
+  ungroup()
+
+acled_total = acled_weekly_data %>%
+  group_by(GID_0, COUNTRY, GID_1, NAME_1) %>%
+  summarise(n_conflict_events_adm1 = n(),
+            n_fatalities_total_adm1  = sum(n_fatalities_isoweek_adm1)) 
+
+acled_ts = tibble(expand.grid(year = c(2013:2024),
+                              isoweek = c(1:52),
+                              GID_1 = polys_idsonly$GID_1)) %>%
+  arrange(year, isoweek)
+
+acled_ts2 = acled_weekly_data %>% 
+  select(GID_1, year, isoweek, n_conflict_events_isoweek_adm1, n_fatalities_isoweek_adm1)
+
+rollsum_4yr <- tibbletime::rollify(sum, window = 52*4)
+
+acled_ts3 = acled_ts %>% 
+  left_join(acled_ts2, by = join_by(GID_1, year, isoweek)) %>%
+  arrange(year, isoweek) %>%
+  mutate(n_conflict_events_isoweek_adm1 = ifelse(is.na(n_conflict_events_isoweek_adm1), 0, n_conflict_events_isoweek_adm1),
+         n_fatalities_isoweek_adm1 = ifelse(is.na(n_fatalities_isoweek_adm1), 0, n_fatalities_isoweek_adm1)) %>%
+  
+  group_by(GID_1) %>%
+  mutate(cum_conflict = rollsum_4yr(n_conflict_events_isoweek_adm1),
+         cum_fatalities = rollsum_4yr(n_fatalities_isoweek_adm1)) 
+
+
+write_rds(acled_ts3, "data/acled_ts.rds")
+
+###### DHS time varying data on vaccine coverage ############
+
+dhs_spatial = read_rds("data/DHS/spatial_dhs_boundaries_full_list_updatedNov24.RDS") 
+dhs_valid <- st_make_valid(dhs_spatial)
+
+dhs_spatial_join = st_join(polys_sf, dhs_valid, left = F)
+
+
+# to upload pre-downloaded DHS Survey data 
+file_names2 = paste0("data/DHS/DHS_survey_data_Nov24/", list.files("data/DHS/DHS_survey_data_Nov24/"))
+
+dhs_all_files = do.call(rbind,
+                        lapply(file_names2, 
+                               read_csv))
+
+
+dhs_surveys = dhs_all_files %>% dplyr::select(SurveyId,
+                                              DPT3_vacc_coverage = Value,
+                                              RegionId,
+                                              SurveyYear,
+                                              SurveyType,
+                                              DHS_CountryCode)
+
+
+dhs_total = dhs_spatial_join %>% left_join(dhs_surveys, by = join_by(REG_ID == RegionId), relationship = "many-to-many")
+
+write_rds(dhs_total, "data/DHS/spatial_and_survey_data_updatedNov24.rds")
+
+dhs_ts = tibble(expand.grid(year = c(2002:2024),
+                            GID_1 = polys_idsonly$GID_1)) %>%
+  arrange(year)
+
+dhs_ts2 = dhs_total %>% 
+  st_drop_geometry() %>%
+  select(GID_1, DPT3_vacc_coverage, DHS_Survey_Year = SurveyYear)
+
+dhs_ts3 = dhs_ts %>% 
+  left_join(dhs_ts2, by = join_by(GID_1, year == DHS_Survey_Year), relationship = "many-to-many") %>%
+  group_by(GID_1) %>%
+  mutate(Vax_coverage = DPT3_vacc_coverage) %>%
+  fill(Vax_coverage, .direction = "downup")
+
+
+write_rds(dhs_ts3, "data/DHS/dhs_timeseries_survey_nogeo_updatedNov24.rds")
+
+
+########## Diphtheria outbreak status ###########
+
+diphtheria_df = read_csv("data/diphtheria/diphtheria_cases_time_series.csv") %>% 
+  select(GID_0, COUNTRY, GID_1, NAME_1, isoweek, year, cumulative_cases) %>%
+  mutate(outbreak_ever = 1,
+         year_week = as.numeric(paste0(year, str_pad(isoweek, width = 2, side = "left", pad = 0)))) %>%
+  group_by(GID_0, COUNTRY, GID_1, NAME_1) %>%
+  mutate(outbreak_earliest = min(year_week)) %>%
+  ungroup()
+
+rollsum_24wk <- tibbletime::rollify(sum, window = 24)
+diphtheria_ts = tibble(expand.grid(year = c(2017:2024),
+                                   isoweek = c(1:52), 
+                                   GID_1 = polys_idsonly$GID_1)) %>%
+  arrange(year, isoweek) %>%
+  # remove data from prior to week 11 in 2017
+  filter(!(year == 2017 & isoweek < 11)) %>%
+  left_join(diphtheria_df %>% select(GID_1, isoweek, year, cumulative_cases), by = join_by(year, isoweek, GID_1)) %>%
+  group_by(GID_1) %>%
+  mutate(year_iso = paste0(year, str_pad(isoweek, width = 2, side = "left", pad = "0"))) %>%
+  arrange(year_iso) %>%
+  tidyr::fill(cumulative_cases, .direction = "down") %>%
+  ungroup() %>%
+  mutate(cum_cases = case_when(is.na(cumulative_cases) ~ 0, 
+                               TRUE ~ cumulative_cases)) %>%
+  group_by(GID_1) %>%
+  mutate(new_cases = cum_cases - lag(cum_cases, default = 0),
+         new_cases_24wk = rollsum_24wk(new_cases),
+         new_cases_24wk = case_when(is.na(new_cases_24wk) ~ 0,
+                                    TRUE ~ new_cases_24wk),
+         outbreak_status = case_when(new_cases_24wk > 1 ~ 1, 
+                                     TRUE ~ 0)) 
+
+
+####### Static data set creation ##############
+
+static <- polys_idsonly %>% 
+  left_join(diphtheria_df
+            %>% select(GID_1, outbreak_ever, outbreak_earliest)) %>%
+  distinct() %>%
+  mutate(outbreak_ever = ifelse(is.na(outbreak_ever), 0, outbreak_ever)) %>%
+  mutate(year = substr(as.character(outbreak_earliest), 1, 4)) %>%
+  mutate(isoweek = substr(as.character(outbreak_earliest), 5, 6)) %>%
+  left_join(acled_total %>% select(GID_1, n_conflict_events_adm1, n_fatalities_total_adm1)) %>%
+  mutate(n_conflict_events_adm1 = ifelse(is.na(n_conflict_events_adm1), 0, n_conflict_events_adm1),
+         n_fatalities_total_adm1 = ifelse(is.na(n_fatalities_total_adm1), 0, n_fatalities_total_adm1))
+
+
+write_csv(static, "data/clean/static.csv")
+
+
+
+
+
+######### timeseries data set #################
+timeseries_full = tibble(expand.grid(year = c(2017:2024),
+                                     isoweek = c(1:52), 
+                                     GID_1 = polys_idsonly$GID_1)) %>%
+  arrange(year, isoweek) %>%
+  # remove data from prior to week 11 in 2017
+  filter(!(year == 2017 & isoweek < 11)) %>%
+  # remove weeks from after week 12 2024
+  filter(!(year == 2024 & isoweek > 12)) %>%
+  left_join(dhs_ts3 %>% select(-DPT3_vacc_coverage), by = join_by(GID_1, year), relationship = "many-to-many") %>%
+  left_join(acled_ts3 %>% select(year, isoweek, GID_1, cum_conflict, cum_fatalities), by = join_by(GID_1, year, isoweek)) %>%
+  left_join(diphtheria_ts %>% select(year, isoweek, GID_1, cum_cases, new_cases, outbreak_status), by = join_by(GID_1, year, isoweek), relationship = "many-to-many") %>%
+  mutate(year_iso_weekday = paste0(year, "-W", str_pad(isoweek, width = 2, side = "left", pad = "0"), "-", 1),
+         week_start = ISOweek2date(year_iso_weekday)) %>%
+  left_join(polys_idsonly %>% select(GID_0, COUNTRY, GID_1, pop_size)) %>%
+  mutate(fatal_100k = cum_fatalities/pop_size * 100000) %>%
+  filter(!is.na(Vax_coverage)) %>%
+  group_by(GID_1) %>%
+  mutate(Vax_cov_wavg = mean(Vax_coverage))
+
+
+write_csv(timeseries_full, "data/clean/full_timeseries_updatedNov24.csv")
