@@ -2,7 +2,7 @@
 ########################### DHS API data collection script     ###########################
 ########################### Diphtheria model WHO region Africa ###########################
 ########################### Author: Tierney O'Sullivan         ###########################
-########################### Date last modified: 2024-04-15     ###########################
+########################### Date last modified: 2024-11-28    ###########################
 ##########################################################################################
 
 ###### Establish countries ################
@@ -25,9 +25,9 @@ country_df = ISO_3166_1 %>%
                                  Name == "Congo, The Democratic Republic of the" ~ "Congo Democratic Republic",
                                  TRUE ~ Common_name)) %>%
   mutate(Name_use = case_when(Name %in% c("Côte d'Ivoire", 
-                              "Cabo Verde", 
-                              "Congo, The Democratic Republic of the",
-                              "Tanzania, United Republic of") ~ Common_name,
+                                          "Cabo Verde", 
+                                          "Congo, The Democratic Republic of the",
+                                          "Tanzania, United Republic of") ~ Common_name,
                               TRUE ~ Name))
 
 # load data dictionary from DHS API 
@@ -43,7 +43,7 @@ write_csv(dhs_df, "DHS_countries_iso.csv")
 # load survey list for all DHS surveys, will need to identify appropriate surveyIDs from the DHS API query
 # url = https://api.dhsprogram.com/rest/dhs/surveys?returnFields=SurveyId,SurveyYearLabel,SurveyType,CountryName&f=html
 
-dhs_surveys = read_csv("data/DHS/DHS_survey_list.csv") %>% 
+dhs_surveys = read_csv("data/DHS/DHS_survey_list_updatedNov2024.csv") %>% 
   left_join(dhs_countries) %>%
   select(SurveyId: DHS_CountryCode) %>%
   # include only DHS surveys 
@@ -77,7 +77,7 @@ for(i in 2:nrow(dhs_surveys)){
   # Convert JSON input to a data frame
   APIdata <- as.data.frame(do.call("rbind", json_data),stringsAsFactors=FALSE)
   
-  write.csv(APIdata, paste0("data/DHS/DHS_survey_data/", iso2code, "_", surveyid))
+  write.csv(APIdata, paste0("data/DHS/DHS_survey_data_Nov24/", iso2code, "_", surveyid,".csv"))
   
 }
 
