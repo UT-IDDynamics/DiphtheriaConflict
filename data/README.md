@@ -11,9 +11,11 @@ Data on fatalities from armed conflict events, their timing and locations are av
 
 Subnational data on childhood three-dose diphtheria tetanus and pertussis (DTP3) vaccination coverage are available as survey-based estimates from the [Demographic Health Survey](https://dhsprogram.com/data/). Data are free to users after [registration](https://dhsprogram.com/data/Registration-Rationale.cfm). This project used the most up to date data from DHS surveys as of November 25, 2024. 
 
-### ADM1 geographic data
+### Geographic data
+Spatial boundaries of countries (ADM0) and states/provinces (ADM1) included in this analysis were collected from the [Database of Global Administrative Areas (GADM)](https://gadm.org/data.html) version 4.1, which is available to download without registration.
 
-### ADM1 population level data
+### Population data
+Data of 1km raster population estimates were obtained from [Oak Ridge National Laboratory's LandScan Global Dataset](https://landscan.ornl.gov/), which are free to download, but require registration. This analysis used the 2022 population estimates. 
 
 # Data description
 
@@ -91,5 +93,3 @@ The data are downloaded as a raster grid, which contains raster cells that appro
 
 #### Strengths and weaknesses
 The main strength of this data set is that it allows a single operation to estimate the population sizes of each ADM1 region in each country included in the analysis. The weaknesses include that I only have the 2022 data, and since I am interested in conducting a longitudinal analysis from 2017-2024, the true population estimates may be different than what is calculated here. 
-
-
