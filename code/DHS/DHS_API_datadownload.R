@@ -13,7 +13,7 @@ library(ISOcodes)
 library(RJSONIO)
 
 # load dataframe of countries included in the WHO Africa region
-countries = read_csv("data/country_list.csv", col_names = "Name") %>% 
+countries = read_csv("data/country_data/country_list.csv", col_names = "Name") %>% 
   mutate(Name = case_when(Name == "C\x99te d'Ivoire" ~ "Côte d'Ivoire",
                           TRUE ~ Name))
 
@@ -38,7 +38,7 @@ dhs_countries = read_csv("data/DHS/DHS_country_list.csv")
 dhs_df = country_df %>% left_join(dhs_countries, by = join_by("Name_use" == "CountryName")) %>%
   filter(!is.na(DHS_CountryCode))
 
-write_csv(dhs_df, "DHS_countries_iso.csv")
+write_csv(dhs_df, "data/country_data/DHS_countries_iso.csv")
 
 # load survey list for all DHS surveys, will need to identify appropriate surveyIDs from the DHS API query
 # url = https://api.dhsprogram.com/rest/dhs/surveys?returnFields=SurveyId,SurveyYearLabel,SurveyType,CountryName&f=html
