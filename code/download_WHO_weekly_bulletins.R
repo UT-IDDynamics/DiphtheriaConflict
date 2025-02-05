@@ -4,7 +4,8 @@ library(tidyverse)
 
 
 # get the data set of file names for the WHO African region weekly bulletins
-file_names <- read_csv("data/who_weekly_bulletin_filenames.csv")
+file_names <- read_csv("data/WHO_weekly_bulletin_data/who_weekly_bulletin_filenames.csv")
+
 # extract the urls for each bulletin
 urls = file_names$url
 
@@ -32,3 +33,5 @@ cont_diphtheria_df = tibble(epiweek = file_names$epiweek,
                             year = file_names$year, 
                             url = file_names$url,
                             cont_dphth = cont_diphtheria_vec)
+
+write_csv(cont_diphtheria_df, "data/WHO_weekly_bulletin_data/weeklybulletindiphtheriadata.csv")
