@@ -4,3 +4,6 @@ acled_access_key.R
 data/GADM/gadm_410-levels.gpkg
 data/LandScan/landscan-global-2022-assets/landscan-global-2022.tif
 data/geographies/ADM1_pop.rds
+data/clean/static.csv
+data/clean/full_timeseries_updatedNov24.csv
+data/conflict_all/*
