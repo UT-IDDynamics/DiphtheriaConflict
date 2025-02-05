@@ -1,0 +1,48 @@
+﻿COUNTRY,DHS,ACLED,GID_0
+Algeria,Not in DHS,,
+Angola,Yes,1,AGO
+Benin,Yes,1,BEN
+Botswana,Not in DHS > 2000,,
+Burkina Faso,Yes,1,BFA
+Burundi,Yes,1,BDI
+Cameroon,Yes,1,CMR
+Cape Verde,Not in DHS,,
+Central African Republic,Not in DHS,,
+Chad,Yes,1,TCD
+Congo,Yes,1,COG
+Cote d'Ivoire,Yes,1,CIV
+Democratic Republic of the Congo,Yes,1,COD
+Equitorial Guinea,Not in DHS,,
+Eritrea,Not in DHS > 2002,,
+Eswatini,yes,1,SWZ
+Ethiopia,yes,1,ETH
+Gabon,yes,1,GAB
+Gambia,yes,1,GMB
+Ghana,yes,1,GHA
+Guinea,yes,1,GIN
+Guinea-Bissau,Not in DHS,,
+Kenya,yes,1,KEN
+Lesotho,yes,1,LSO
+Liberia,yes,1,LBR
+Madagascar,yes,1,MDG
+Malawi,yes,1,MWI
+Mali,yes,1,MLI
+Mauritania,yes,1,MRT
+Mauritius,Not in DHS,,
+Mozambique,yes,1,MOZ
+Namibia,yes,1,NAM
+Niger,yes,1,NER
+Nigeria,yes,1,NGA
+Rwanda,yes,1,RWA
+Sao Tome and Principe,yes,0,
+Senegal,yes,1,SEN
+Seychelles,Not in DHS,,
+Sierra Leone,yes,1,SLE
+South Africa,yes,1,ZAF
+South Sudan,Not in DHS,,
+Tanzania,yes,1,TZA
+Togo,Yes,1,TGO
+Comoros,yes,0,
+Uganda,yes,1,UGA
+Zambia,yes,1,ZMB
+Zimbabwe,yes,1,ZWE

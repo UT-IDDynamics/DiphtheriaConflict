@@ -2,8 +2,16 @@ acled_access_key.R
 *.DS_STORE
 .Rproj.user
 data/GADM/gadm_410-levels.gpkg
+data/GADM/gadm_410.gpkg
 data/LandScan/landscan-global-2022-assets/landscan-global-2022.tif
 data/geographies/ADM1_pop.rds
 data/clean/static.csv
 data/clean/full_timeseries_updatedNov24.csv
 data/conflict_all/*
+data/acled_ts.rds
+data/ADM1_pop.rds
+data/DHS/DHS_survey_data_Nov24/*
+data/DHS/dhs_timeseries_survey_nogeo_updatedNov24.rds
+data/DHS/spatial_and_survey_data_updatedNov24.rds
+data/DHS/spatial_boundaries/*
+data/DHS/spatial_dhs_boundaries_full_list_updatedNov24.RDS
