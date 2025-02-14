@@ -1,0 +1,281 @@
+---
+title: "Analytic Workflow"
+author: "Tierney O'Sullivan"
+date: "2025-02-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# load library
+library(DiagrammeR)
+```
+
+# Datasets
+See `data/README.md`
+
+# Analytic Workflow
+
+Due to the large data sets and spatial data operations that use a lot of memory, I have broken down the data procurement, cleaning, and analysis into multiple R scripts. See below for a description of each script and their portion of the Analytic workflow. 
+
+### Geographic data
+
+#### Script: create_geographies.R
+
+Uses GADM polygon data to create a subset of polygons to use in this analysis at the ADM0 (country) and ADM1 (state) levels. Uses the LandScan population raster to calculate the population sizes of each ADM1.
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      GADM_410.gpkg-- use st_read to import world ADM0 polygons -->GADM0_world
+      GADM_410.gpkg-- use st_read to import world ADM1 polygons -->GADM1_world
+      DHS_countries_iso.csv-- import relevant country list -->dhs_countries
+      LandScan_data-- download world raster pop data 1km -->world_pop_ls
+      GADM0_world-- spatial transform to world pop projection -->adm0
+      GADM1_world-- spatial transform to world pop projection -->adm1
+      adm0-- filter to includ relevant countries -->adm0_subset
+      dhs_countries-- filter to includ relevant countries -->adm0_subset
+      adm1-- filter to includ relevant countries -->adm1_subset
+      dhs_countries-- filter to includ relevant countries -->adm1_subset
+      world_pop_ls-- get pop data by summing cells in each polygon -->adm1_pop
+      adm1_subset-- get pop data by summing cells in each polygon -->adm1_pop
+      adm1_subset-- add pop_size as column to polygon data-->adm1_afr
+      adm1_pop-- add pop_size as column to polygon data-->adm1_afr
+      adm1_aft-- save data -->ADM1_pop.rds
+")
+```
+
+### Demographic health surveys (DHS) Diphtheria (DPT3) Vaccine coverage data
+
+#### Script: DHS_API_datadownload.R
+
+File creates a set of surveys that match the countries and years of interest and systematically downloads their survey data for DPT3 vaccine coverage from the DHS API. 
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      country_list.csv-- get list of WHO African region countries -->countries
+      country_df-- use ISOcodes pkg to get ISO codes -->country_df
+      DHS_country_list.csv-- load list of DHS countries surveyed -->dhs_countries
+      dhs_countries-- join to add iso codes to dhs countries -->dhs_df
+      country_df-- join to add iso codes to dhs countries -->dhs_df
+      DHS_survey_list.csv-- load list of all DHS survey ids -->dhs_surveys
+      dhs_surveys-- select all relevant surveys -->dhs_surveys
+      dhs_surveys-- for loop to download relevant surveys from API -->json_file
+      json_data-- get all survey data into a dataframe from list -->json_file
+      json_data-- create a massive dataframe of all survey data -->APIdata
+      APIdata-- save survey data with metadata in filenames -->DHS_survey_data
+      
+")
+```
+#### Script: DHS_geographies.R
+
+Script that creates a spatial data frame with polygons specific to each DHS survey boundary.
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      DHS_spatial_boundaries_files.shp-- get filenames of all dhs boundary shapefiles -->file_names
+      file_names-- create a spatial dataset of all dhs boundaries -->dhs_spatial
+      dhs_spatial-- store spatial file in an r data storage format -->spatial_dhs_boundaries_full_list.RDS
+      
+")
+```
+### Conflict data
+
+#### Script: acled_access_key.R
+
+Simple script to store the private API key in a file outside of the main analysis scripts.
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      API_key-- save acled access key -->acled_access_key.R
+")
+```
+
+#### Script: download_acled_api.R
+
+Creates a list of relevant countries and downloads conflict (ACLED) data for each of them via the ACLED API.
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      country_list.csv-- get list of WHO African region countries -->countries
+      country_df-- use ISOcodes pkg to get ISO codes -->country_df
+      acled_iso_codes.csv-- load ACLED country codes from their website -->acled_iso
+      acled_iso-- keep ones that are in countries of interest -->acled_iso_use
+      country_df-- keep ones that are in countries of interest -->acled_iso_use
+      country_df-- join with acled_iso_use -->country_df
+      acled_iso_use-- join with country_df -->country_df
+      country_df-- filter to exclude countries w missing DHS data -->country_df
+      acled_access_key.R-- import acled API key -->acled_api_key
+      country_df-- for loop to download 2013-2024 conflict data -->raw_acled_data_files
+      acled_api_key-- for loop to download 2013-2024 conflict data -->raw_acled_data_files
+      
+")
+```
+
+
+### Diphtheria data 
+#### Script: download_WHO_weekly_bulletins.R
+
+Creates a script to download all the WHO weekly bulletins for outbreaks and other emergencies from the WHO websites and determines if each contains any information or reporting related to diphtheria outbreaks. This diphtheria status is exported and used for further diphtheria data extraction. 
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      WHO_website-- Manually gather WHO Weekly bulletin filenames -->who_weekly_bulletin_filenames.csv
+      who_weekly_bulletin_filenames.csv-- load in filename data -->file_names
+      file_names-- extract urls for each bulletin -->urls
+      urls-- create pdf names to store all bulletins in systematically -->pdf_names
+      urls-- use walk2 to download all files -->raw_pdfs
+      pdf_names-- use walk2 to download all files -->raw_pdfs
+      raw_pdfs-- use map and pdf_text to extract all text -->raw_text
+      pdf_names-- use map and pdf_text to extract all text -->raw_text
+      raw_text-- use str_detect to find pdfs with diphtheria -->con_diphtheria
+      cont_diphtheria-- use lapply and any to get T or F for entire pdf -->cont_diphtheria_ls
+      cont_diphtheria_ls-- unlist to create a vector of TF -->cont_diphtheria_vec
+      cont_diphtheria_vec-- create df with epiweek file metadata and diphtheria presence absence -->cont_diphtheria_df
+      cont_diphtheria_df-- manually examine diphtheria containing pdfs and extract table contents for diphtheria outbreaks -->diphtheria_cases_time_series.csv
+      
+")
+```
+
+### Creating data set for analysis
+#### Script: data_collect_diphtheria.R
+Combines the data from all sources into two final data sets: a static data set and a time series data set. 
+
+First: geography data
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      Exclusion_inclusion_criteria.csv-- get list of WHO African region countries included in analysis & get GID_0 -->country_list
+      ADM1_pop.rds-- load geographic data -->polys
+      polys-- remove unnecessary countries -->polys
+      polys-- make geometries valid -->polys
+      polys-- calculate area -->area
+      polys-- calculate centroids -->centroids
+")
+```
+
+Next: Conflict data
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      raw_conflict_files-- get names of all acled data -->file_names_acled
+      file_names_acled-- read in acled data -->acled_total
+      acled_total-- add week start to data -->acled
+      acled-- turn into a spatial data set using lat lon -->acled_sf
+      acled_sf-- buffer conflict events by 10 km to make polygons -->acled_buff
+      acled_buff-- spatial overlay to include acled data within ADM1 -->polys_acled_join
+      polys_sf-- spatial overlay to include acled data within ADM1 -->polys_acled_join
+      polys_acled_join-- drop geometry and group by week and ADM1 calc weekly conflict -->acled_weekly_data
+      acled_weekly_data-- get total conflicts and deaths overall by ADM1 -->acled_total
+      polys_idsonly-- create timeseries for all places for all weeks -->acled_ts
+      acled_weekly_data-- select relevant cols -->acled_ts2
+      rollsum_4yr-- create a function to take rolling sum over 4 yr windown -->rollsum_4yr
+      acled_ts-- join to get overall ts dataset -->acled_ts3
+      acled_ts2-- join to get overall ts dataset -->acled_ts3
+      acled_ts3-- group by ADM1 and get cumulative conflict & fatalities over 4 year moving window -->acled_ts3
+      
+")
+```
+Next: DHS time varying data on vaccine coverage
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      spatial_dhs_boundaries_full_lust.RDS-- load spatial dhs dataset -->dhs_spatial
+      dhs_spatial-- make valid -->dhs_valid
+      polys_sf-- spatial overlay intersection -->dhs_spatial_join
+      dhs_valid-- spatial overlay intersection -->dhs_spatial_join
+      DHS_survey_data-- get names of all DHS survey data -->file_names2
+      file_names2-- import all files and bind rows in one df -->dhs_all_files
+      dhs_all_files-- select relevant cols -->dhs_surveys
+      dhs_spatial_join-- join spatial data and survey data by ADM1 -->dhs_total
+      dhs_surveys-- join spatial data and survey data by ADM1 -->dhs_total
+      dhs_ts-- create time series of all years and places -->dhs_ts
+      dhs_total-- drop geometry and select cols of interest -->dhs_ts2
+      dhs_ts-- join with survey data -->dhs_ts3
+      dhs_ts2-- join with time series data -->dhs_ts3
+      dhs_ts3-- fill missing data with previous estimates -->dhs_ts3
+")
+```
+Next: Diphtheria outbreak status
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      diphtheria_cases_time_series.csv-- read in diphtheria data -->diphtheria_df
+      rollsum_24wk-- create fun to calc rolling sum over 6 month window -->rollsum_24wk
+      diphtheria_df-- create a timeseries of diphtheria cases -->diphtheria_ts
+      diphtheria_ts-- create vars cum_cases, new_cases, outbreak_status -->diphtheria_ts
+      rollsum_24wk-- create vars new_cases_24wk, outbreak_status -->diphtheria_ts
+")
+```
+Next: Create static dataframe with each ADM1 listed as a row and whether there was ever a diphtheria outbreak reported, and their total cumulative number of conflict events & fatalities
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      polys_idsonly-- join -->static
+      diphtheria_df-- join -->static
+      static-- create outbreak_ever and cum fatalities and conflicts vars -->static
+")
+```
+Finally: Create dataframe of time-varying data with each ADM1 and year-epiweek listed as a row . Create time-varying outbreak status variable, time-varying vaccine coverage variable, and time-varying 4 year cumulative fatalities & conflict events variables.
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      timeseries_full-- create full df of all years, isoweeks, ADM1 -->timeseries_full
+      dhs_ts3-- join dhs data -->timeseries_full
+      acled_ts3-- join acled data -->timeseries_full
+      diphtheria_ts-- join diphtheria outbreak data -->timeseries_full
+      polys_ids_only-- join for GID_0, COUNTRY, and pop_size vars -->timeseries_full
+      time_series_full-- create fatalities per 100k var -->timeseries_full
+")
+```
+
+### Analytic Workflow for Data Analysis: 
+#### Script: FinalReport.Rmd
+First: static dataset to get crude relationship between per 100K cumulative conflict-related fatalities vs. whether each ADM1 ever had a diphtheria outbreak from 2017-2024
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      static-- create per 100k cum conflict fatality -->static
+      static-- create basic glm binomial model to look at crude OR btwn fatal and diphtheria outbreak -->mod
+      mod-- generate predictions for range of fatalities -->Predicted_data
+      Predicted_data-- plot model predicted prob of diphtheria outbreak -->scatterplot
+      mod-- summarize model -->summary_mod
+")
+```
+Second: time-varying dataset to get temporal relationship between per 100K cumulative conflict-related fatalities in the 4 years prior vs. whether each ADM1 has had a diphtheria outbreak in the past 6 months over the entire 2017-2024 time period
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      full_timeseries.csv-- load timeseries data-->ts
+      ts-- glm accounting for repeated measures and adjusting for vax cov -->mod2
+      mod2-- generate predictions for range of fatalities for each ADM1 -->predicted_data_ts
+      predicted_data_ts-- plot model predicted prob of diphtheria outbreak -->scatterplot
+      mod2-- summarize model -->summary_mod2
+")
+```
+
+Third: time-varying dataset to get temporal relationship between per 100K cumulative conflict-related fatalities in the 4 years prior vs. whether each ADM1 has had a diphtheria outbreak in the past 6 months over the entire 2017-2024 time period. But now including vaccination as a quadratic term. 
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      ts-- create a quadratic variable for vaccination -->ts
+      ts-- glm accounting for repeated measures and adjusting for vax cov -->mod3
+      mod3-- generate predictions for range of fatalities for each ADM1 -->predicted_data_ts
+      predicted_data_ts-- plot model predicted prob of diphtheria outbreak -->scatterplot
+      mod3-- summarize model -->summary_mod3
+")
+```
+
+Fourth: time-varying dataset to get temporal relationship between per 100K cumulative conflict-related fatalities in the 4 years prior vs. whether each ADM1 has had a diphtheria outbreak in the past 6 months over the entire 2017-2024 time period. But now including vaccination as a categorical term. 
+```{r, echo=FALSE}
+DiagrammeR("
+graph TD
+      ts-- create categorical vaccination variable -->ts_cat
+      ts_cat-- glm accounting for repeated measures and adjusting for vax cov -->mod4
+      mod4-- generate predictions for range of fatalities for each ADM1 -->predicted_data_ts
+      predicted_data_ts-- plot model predicted prob of diphtheria outbreak -->scatterplot
+      mod4-- summarize model -->summary_mod4
+")
+```
