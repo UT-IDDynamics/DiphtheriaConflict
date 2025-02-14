@@ -17,3 +17,4 @@ data/DHS/spatial_boundaries/*
 data/DHS/spatial_dhs_boundaries_full_list_updatedNov24.RDS
 sitreps/*
 weeklybulletins/*
+code/FinalReport.html
