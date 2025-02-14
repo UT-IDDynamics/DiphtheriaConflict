@@ -1,0 +1,414 @@
+---
+title: 'PHS7020 Independent Data Project'
+subtitle: 'Conflict and Diphtheria at the Subnational Level in the WHO African Region 2017-2024'
+author: "Tierney O'Sullivan, Lindsay T. Keegan"
+date: "2024-11-24"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(here)
+library(DiagrammeR) 
+library(lme4)
+library(gtsummary)
+library(broom.mixed)
+
+```
+
+
+
+### DAG + Conceptual Diagram
+Suggested Causal Diagram, which incorporates steps in the WHO Conceptual framework for vaccine preventable diseases. 
+
+```{r, echo = FALSE, fig.cap="Figure 1. Relating key variables of interest (conflict, DPT3 vaccination rates, diphtheria outbreaks within the WHO Conceptual Framework for vaccine preventable diseases.)"}
+# use mermaid.js within the DiagrammeR wrapper 
+DiagrammeR("
+graph TD
+      id1[Conflict events]-- Reduces -->id3[Strategic Objective 1 Strengthening and Expanding Immunization Systems and Programs]
+      id4[Strategic Objective 2 Managing Health Intelligence on Vaccine Preventable Diseases and Immunization]-- Reduces -->id2[Diphtheria outbreaks]
+      id1[Conflict events]-- Reduces  -->id4[Strategic Objective 2 Managing Health Intelligence on Vaccine Preventable Diseases and Immunization]
+      id3[Strategic Objective 1 Strengthening and Expanding Immunization Systems and Programs]-- Cycle to Step 2 -->id4[Strategic Objective 2 Managing Health Intelligence on Vaccine Preventable Diseases and Immunization]
+      id3[Strategic Objective 1 Strengthening and Expanding Immunization Systems and Programs]-- Increases -->id6[DPT vaccination rates]
+      id6[DPT vaccination rates]-- Reduces -->id2[Diphtheria outbreaks]
+      id4[Strategic Objective 2 Managing Health Intelligence on Vaccine Preventable Diseases and Immunization]-- Cycle to Step 3 -->id5[Strategic Objective 3 Preparing for and Responding to Public Health Emergency]
+      id5[Strategic Objective 3 Preparing for and Responding to Public Health Emergency]-- Cycles back to Step 1 -->id3[Strategic Objective 1 Strengthening and Expanding Immunization Systems and Programs]
+      style id1 fill:#f7f,stroke:#333,stroke-width:4px
+      style id2 fill:#f96,stroke:#333,stroke-width:4px
+      style id3 fill:#6fc,stroke:#333,stroke-width:4px
+      style id4 fill:#6fc,stroke:#333,stroke-width:4px
+      style id5 fill:#6fc,stroke:#333,stroke-width:4px
+      style id6 fill:#fdh,stroke:#333,stroke-width:4px
+      ")
+  
+```
+Figure 1 illustrates how the key variables of interest fit in with the conceptual model from the WHO Vaccine Preventable Disease framework. Strategic objective 1 focuses on vaccine coverage, which is included in the DAG as an unobserved mediator between conflict events and diphtheria cases. Thus, we hypothesize that conflict events have a destabilizing effect on public health infrastructure and would negatively impact Strategic Objective 1 by lowering vaccination rates. Conflict events may also have a separate negative impact on health systems by reducing the ability for public health agencies to accurately detect early outbreaks by limiting surveillance systems in areas affected by conflict.  Thus, even by including more recent observations of DPT3 vaccine coverage, we may still see an effect of conflict events on the risk of diphtheria outbreaks by detecting the effects of conflict events on strategic objectives 2 and 3. 
+
+### DAG for variables to be included in the analysis
+```{r, echo = FALSE, fig.cap="Figure 2. The complete DAG for estimating the impact of conflict events on diphtheria outbreaks."}
+# use mermaid.js within the DiagrammeR wrapper to establish the beneficiary data workflow
+DiagrammeR("
+graph TD
+      id1[Conflict events]-- Reduces via Objective 1 -->id6[DPT vaccination rates]
+      id1[Conflict events]-- Increases via Objective 2 -->id2[Diphtheria outbreaks]
+      id6[DPT vaccination rates]-- Reduces -->id2[Diphtheria outbreaks]
+      
+      style id1 fill:#f7f,stroke:#333,stroke-width:4px
+      style id2 fill:#f96,stroke:#333,stroke-width:4px
+      style id6 fill:#fdh,stroke:#333,stroke-width:4px
+      ")
+  
+```
+# Datasets
+See `data/README.md`
+
+# Analytic workflow
+See `AnalyticWorkflow.Rmd`
+
+# Analyses
+
+### Static data
+
+#### Load data
+
+```{r}
+static = read_csv("../data/clean/static.csv")
+# create a per 100k population rate for conflict-related fatatilties across the entire study period for each ADM1
+static = static %>% mutate(p_100k_conflict_fatal = n_fatalities_total_adm1 /pop_size * 100000)
+```
+
+#### Basic glm model: Crude OR
+```{r}
+
+# fit a basic glm
+mod = glm(outbreak_ever ~ log(p_100k_conflict_fatal + 1), data = static, family = binomial(link = "logit"))
+
+# data frame with conflict events in ascending order
+Predicted_data <- data.frame(p_100k_conflict_fatal=seq(
+  min(static$p_100k_conflict_fatal), 
+  max(static$p_100k_conflict_fatal),len=500))
+
+# Fill predicted values using regression model
+Predicted_data$outbreak_ever = predict(
+  mod, Predicted_data, type="response")
+
+
+#Data frame with hp in ascending order
+Predicted_data <- data.frame(p_100k_conflict_fatal=seq(
+  min(static$p_100k_conflict_fatal), max(static$p_100k_conflict_fatal),len=500))
+
+# Fill predicted values using regression model
+Predicted_data$outbreak_ever = predict(
+  mod, Predicted_data, type="response")
+
+# Plot Predicted data and original data points
+
+ggplot(static) + 
+  geom_point(aes(x = log(p_100k_conflict_fatal +1), y = outbreak_ever), alpha = 0.5) + 
+  geom_line(aes(x = log(p_100k_conflict_fatal+1), y = outbreak_ever), data = Predicted_data, col = "blue") +
+  theme_bw() +
+  xlab("Log number of cumulative conflict-related fatalities 2013-2024") +
+  ylab("Diphtheria outbreak status 2017-2024") +
+  ggtitle("Predicted probability of having a diphtheria outbreak")
+
+summary(mod)
+
+```
+
+```{r}
+# Wald confint
+
+tidy(mod,effects="fixed", conf.int = T) # gives Wald confint
+mod_coef = exp(confint(mod, method = "Wald"))
+mod_coef
+
+#check model assumptions
+library(DHARMa)
+sim <- simulateResiduals(fittedModel = mod, 
+                         n = 1000)
+plot(sim) 
+```
+
+
+#### Violin plot
+
+Conflict-related fatalities
+```{r}
+library(ggbeeswarm)
+mycolors = c("#67587c", "#c0653d")
+colScale <- scale_fill_manual(name = "Diphtheria status", labels=c("Absent", "Present"), values = mycolors)
+
+swarm_plot = ggplot(static %>% 
+                      mutate(outbreak_ever = plyr::revalue(as.factor(outbreak_ever), c("0" = "Diphtheria\nAbsent", "1" = "Diphtheria\nPresent")))) +
+  geom_violin(aes(x = p_100k_conflict_fatal, 
+                  y = outbreak_ever, 
+                  fill = outbreak_ever), alpha = 0.5, 
+              draw_quantiles = c(0.25,0.5,0.75), 
+              color = "gray30", lwd = 1.2) +
+  geom_beeswarm(aes(x = p_100k_conflict_fatal, 
+                  y = outbreak_ever, 
+                  fill = outbreak_ever, color = outbreak_ever), alpha = 0.8) + 
+  
+  theme_bw() +
+  guides(fill = guide_legend(position = "inside")) +
+  theme(legend.position.inside = c(0.89,0.85),
+        legend.background=element_blank()) +
+  xlab("Cumulative conflict-related fatalities 2013-2024 per 100,000 residents") +
+  ylab("") +
+  labs(legend.title = "Diphtheria cases reported") + 
+  colScale +
+  scale_color_manual(name = "Diphtheria status", labels=c("Absent", "Present"), values = mycolors) +
+  scale_x_continuous(trans=scales::pseudo_log_trans(base = 10),
+                     breaks = c(0, 2, 5, 25, 10, 50, 100, 500, 1000))
+  
+swarm_plot
+
+```
+```{r}
+
+static %>% 
+  group_by(outbreak_ever) %>%
+  summarise(MED = median(p_100k_conflict_fatal), 
+            IQR25 = quantile(p_100k_conflict_fatal, 0.25),
+            IQR75 = quantile(p_100k_conflict_fatal, 0.75))
+```
+
+
+### Timeseries data
+
+#### Load data
+```{r}
+ts = read_csv("../data/clean/full_timeseries_updatedNov24.csv")
+
+```
+
+Vaccination coverage
+```{r}
+library(ggbeeswarm)
+mycolors = c("#67587c", "#c0653d")
+colScale <- scale_fill_manual(name = "Diphtheria status", labels=c("Absent", "Present"), values = mycolors)
+
+vax_avg = ts %>% 
+  group_by(GID_1) %>%
+  summarise(Vax_avg = mean(Vax_coverage)) 
+  
+swarm_plot_vax = ggplot(static %>% 
+                      left_join(vax_avg) %>%
+                      mutate(outbreak_ever = plyr::revalue(as.factor(outbreak_ever), c("0" = "Diphtheria\nAbsent", "1" = "Diphtheria\nPresent")))) +
+  geom_violin(aes(x = Vax_avg, 
+                  y = outbreak_ever, 
+                  fill = outbreak_ever), alpha = 0.5, 
+              draw_quantiles = c(0.25,0.5,0.75), 
+              color = "gray30", lwd = 1.2) +
+  geom_beeswarm(aes(x = Vax_avg, 
+                  y = outbreak_ever, 
+                  fill = outbreak_ever, color = outbreak_ever), alpha = 0.8) + 
+  
+  theme_bw() +
+  xlab("Weighted average of Childhood DTP3 Vaccine Coverage Estimates 2017-2024 (%)") +
+  ylab("") +
+  guides(fill = "none", color = "none") +
+  colScale +
+  scale_color_manual(name = "Diphtheria status", labels=c("Absent", "Present"), values = mycolors)
+swarm_plot_vax
+
+
+```
+
+```{r}
+
+library(cowplot)
+plot_grid(swarm_plot, swarm_plot_vax, labels = c("A", "B"), nrow = 2)
+
+```
+
+
+
+
+```{r}
+
+static %>% left_join(vax_avg) %>%
+  group_by(outbreak_ever) %>%
+  summarise(MED = median(Vax_avg, na.rm = T), 
+            IQR25 = quantile(Vax_avg, na.rm = T, 0.25),
+            IQR75 = quantile(Vax_avg, na.rm = T, 0.75))
+
+
+```
+
+
+
+#### Plot timeseries of diptheria
+```{r}
+ts_freq_poly = ts %>% 
+  group_by(week_start) %>% 
+  summarise(prop_diphtheria_present = mean(outbreak_status),
+            prop_diphtheria_absent = 1 - mean(outbreak_status), 
+            n_diphtheria_present = sum(outbreak_status))
+
+  
+timeplot_diphtheria = ggplot(ts_freq_poly) +
+  geom_line(aes(x = week_start, y = n_diphtheria_present), col = "#c0653d", lwd = 1.2) +
+  theme_bw() +
+  ylab("Number of Diphtheria Present ADM1 regions") +
+  xlab("Year")
+  
+timeplot_diphtheria
+```
+
+
+#### Repeated-measures GLM, adjusted for time-varying vaccine coverage
+```{r}
+
+mod2 = glmer(outbreak_status ~ Vax_coverage + log(fatal_100k+1) + (1|GID_1) + (1|GID_0),
+            data = ts,
+            family = binomial(link = "logit"))
+summary_mod2 = summary(mod2)
+summary_mod2
+exp(summary_mod2$coefficients)
+
+tidy(mod2,effects="fixed", conf.int = T) # gives Wald confint
+mod_coef = exp(confint(mod2, method = "Wald"))
+mod_coef
+
+summary_mod2$AICtab
+
+```
+
+```{r}
+min_fatalities = min(ts$fatal_100k)
+max_fatalities = max(ts$fatal_100k)
+fatal_100k = data.frame(fatal_100k = seq.int(min_fatalities, max_fatalities, length.out = 500))
+predicted_data_ts = ts %>% 
+  select(GID_0, GID_1, Vax_coverage) %>%
+  group_by(GID_0, GID_1) %>%
+  summarise(Vax_coverage = mean(Vax_coverage, na.rm = T)) %>%
+  cross_join(fatal_100k) %>%
+  ungroup() %>%
+  filter(!GID_1 %in% c("MLI.4_1", "MOZ.3_1", "MOZ.5_1", "MOZ.7_1", "MOZ.9_1"))
+
+
+# Fill predicted values using regression model
+predicted_data_ts$outbreak_status = predict(
+  mod2, predicted_data_ts, type="response")
+```
+
+```{r}
+# Plot Predicted data and original data points
+ggplot(ts) + 
+  geom_point(aes(y = outbreak_status, x = log(fatal_100k+1)), alpha= 0.02) + 
+  geom_line(aes(x = log(fatal_100k +1), y = outbreak_status, group = GID_1), data = predicted_data_ts, col = "blue", alpha = 0.2) + theme_bw() +
+  xlab("Log number of cumulative conflict-related fatalities in past 4 years") +
+  ylab("Reported diphtheria outbreak in past 6 months") +
+  ggtitle("Predicted probability of having a diphtheria outbreak by ADM1 with \n Vaccine coverage set to ADM1-specific mean")
+
+```
+
+#### Model 3: Now with vaccine as a quadratic term
+```{r}
+
+ts = ts %>%
+  mutate(Vax_coverage_rescaled = scale(Vax_coverage),
+         Vax_coverage_squared = Vax_coverage**2,
+         Vax_coverage_squared_rescaled = scale(Vax_coverage_squared))
+mod3 = glmer(outbreak_status ~ Vax_coverage_rescaled + Vax_coverage_squared_rescaled + log(fatal_100k+1) + (1|GID_1) + (1|GID_0),
+            data = ts,
+            family = binomial(link = "logit"))
+summary_mod3 = summary(mod3)
+summary_mod3
+exp(summary_mod3$coefficients)
+
+summary_mod3$AICtab
+
+```
+#### Plot predicted for model 3
+```{r}
+min_fatalities = min(ts$fatal_100k)
+max_fatalities = max(ts$fatal_100k)
+fatal_100k = data.frame(fatal_100k = seq.int(min_fatalities, max_fatalities, length.out = 500))
+predicted_data_ts = ts %>% 
+  select(GID_0, GID_1, Vax_coverage_rescaled, Vax_coverage_squared_rescaled) %>%
+  group_by(GID_0, GID_1) %>%
+  summarise(Vax_coverage_rescaled = mean(Vax_coverage_rescaled),
+            Vax_coverage_squared_rescaled = mean(Vax_coverage_squared_rescaled)) %>%
+  cross_join(fatal_100k) %>%
+  ungroup() %>%
+  filter(!GID_1 %in% c("MLI.4_1"))
+
+
+# Fill predicted values using regression model
+predicted_data_ts$outbreak_status = predict(
+  mod3, predicted_data_ts, type="response")
+```
+```{r}
+
+mycolors = c("#67587c", "#c0653d")
+# Plot Predicted data and original data points
+ggplot() + 
+  geom_line(aes(x = log(fatal_100k +1), y = outbreak_status, group = GID_1), data = predicted_data_ts, col = "grey", alpha = 0.3) + 
+   geom_point(data = ts %>% filter(outbreak_status == 1), 
+              aes(y = outbreak_status, 
+                             x = log(fatal_100k+1), 
+                  color = "Present"), 
+                             col = mycolors[2], 
+              alpha= 0.05) + 
+  geom_point(data = ts %>% filter(outbreak_status == 0), 
+              aes(y = outbreak_status, 
+                             x = log(fatal_100k+1), 
+                  color = "Absent"), 
+                             col = mycolors[1], 
+              alpha= 0.05) + 
+  theme_bw() +
+  xlab("Log number of cumulative conflict-related fatalities in past 4 years") +
+  ylab("Predicted probability of a diphtheria presence") +
+  scale_y_continuous(sec.axis = sec_axis(~ ., breaks = c(0,1), name="Diphtheria status",
+                                 labels = c("Absent", "Present"))) 
+
+```
+
+
+#### Model 4: Vaccination as categorical term
+```{r}
+
+
+ts_cat = ts %>% mutate(Vax_cat = cut(Vax_coverage, breaks = c(0, 50, 80, 100))) %>%
+  mutate(Vax_cat = factor(Vax_cat, ordered = TRUE, levels = c("(80,100]", "(50,80]", "(0,50]")),
+         Vax_cat_lmh = recode_factor(Vax_cat, "(80,100]" = "High", "(50,80]" = "Medium", "(0,50]" = "Low"))
+
+mod4 = glmer(outbreak_status ~ log(fatal_100k+1) + Vax_cat_lmh + (1|GID_1) + (1|GID_0),
+            data = ts_cat,
+            family = binomial(link = "logit"))
+summary_mod4 = summary(mod4)
+summary_mod4
+exp(summary_mod4$coefficients)
+
+
+```
+
+```{r}
+# Wald confint
+
+# model with vaccine as quadratic
+tidy(mod3,effects="fixed", conf.int = T) # gives Wald confint
+mod3_coef = exp(confint(mod3, method = "Wald"))
+
+
+# model with vaccine as categorical
+tidy(mod4,effects="fixed", conf.int = T) # gives Wald confint
+mod4_coef = exp(confint(mod4, method = "Wald"))
+
+```
+
+
+
