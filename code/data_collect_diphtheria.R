@@ -125,10 +125,13 @@ write_rds(acled_ts3, "data/acled_ts.rds")
 
 ###### DHS time varying data on vaccine coverage ############
 
+
 dhs_spatial = read_rds("data/DHS/spatial_dhs_boundaries_full_list_updatedNov24.RDS") 
 dhs_valid <- st_make_valid(dhs_spatial)
 
 dhs_spatial_join = st_join(polys_sf, dhs_valid, left = F)
+
+
 
 
 # to upload pre-downloaded DHS Survey data 
@@ -149,24 +152,33 @@ dhs_surveys = dhs_all_files %>% dplyr::select(SurveyId,
 
 dhs_total = dhs_spatial_join %>% left_join(dhs_surveys, by = join_by(REG_ID == RegionId), relationship = "many-to-many")
 
-write_rds(dhs_total, "data/DHS/spatial_and_survey_data_updatedNov24.rds")
+write_rds(dhs_total, "data/DHS/spatial_and_survey_data_updatedMar25.rds")
+
+dhs_total_avg = dhs_total %>% 
+  st_drop_geometry() %>%
+  group_by(GID_1, SurveyYear) %>%
+  mutate(mean_vax_cov = mean(DPT3_vacc_coverage, na.rm = T)) %>%
+  ungroup()
+  
 
 dhs_ts = tibble(expand.grid(year = c(2002:2024),
                             GID_1 = polys_idsonly$GID_1)) %>%
   arrange(year)
 
-dhs_ts2 = dhs_total %>% 
-  st_drop_geometry() %>%
-  select(GID_1, DPT3_vacc_coverage, DHS_Survey_Year = SurveyYear)
+dhs_ts2 = dhs_total_avg %>%
+  select(GID_1, DPT3_vacc_coverage = mean_vax_cov, DHS_Survey_Year = SurveyYear) %>%
+    distinct()
+    
 
 dhs_ts3 = dhs_ts %>% 
-  left_join(dhs_ts2, by = join_by(GID_1, year == DHS_Survey_Year), relationship = "many-to-many") %>%
+  # left_join(dhs_ts2, by = join_by(GID_1, year == DHS_Survey_Year), relationship = "many-to-many") %>%
+  left_join(dhs_ts2, by = join_by(GID_1, year == DHS_Survey_Year)) %>%
   group_by(GID_1) %>%
   mutate(Vax_coverage = DPT3_vacc_coverage) %>%
   fill(Vax_coverage, .direction = "downup")
 
 
-write_rds(dhs_ts3, "data/DHS/dhs_timeseries_survey_nogeo_updatedNov24.rds")
+write_rds(dhs_ts3, "data/DHS/dhs_timeseries_survey_nogeo_updatedMar25.rds")
 
 
 ########## Diphtheria outbreak status ###########
@@ -223,7 +235,7 @@ write_csv(static, "data/clean/static.csv")
 
 
 
-######### timeseries data set #################
+######### timeseries data set for outcome of diphtheria #################
 timeseries_full = tibble(expand.grid(year = c(2017:2024),
                                      isoweek = c(1:52), 
                                      GID_1 = polys_idsonly$GID_1)) %>%
@@ -232,16 +244,50 @@ timeseries_full = tibble(expand.grid(year = c(2017:2024),
   filter(!(year == 2017 & isoweek < 11)) %>%
   # remove weeks from after week 12 2024
   filter(!(year == 2024 & isoweek > 12)) %>%
-  left_join(dhs_ts3 %>% select(-DPT3_vacc_coverage), by = join_by(GID_1, year), relationship = "many-to-many") %>%
+  # left_join(dhs_ts3 %>% select(-DPT3_vacc_coverage), by = join_by(GID_1, year), relationship = "many-to-many") %>%
+  left_join(dhs_ts3 %>% select(-DPT3_vacc_coverage), by = join_by(GID_1, year)) %>%
   left_join(acled_ts3 %>% select(year, isoweek, GID_1, cum_conflict, cum_fatalities), by = join_by(GID_1, year, isoweek)) %>%
   left_join(diphtheria_ts %>% select(year, isoweek, GID_1, cum_cases, new_cases, outbreak_status), by = join_by(GID_1, year, isoweek), relationship = "many-to-many") %>%
   mutate(year_iso_weekday = paste0(year, "-W", str_pad(isoweek, width = 2, side = "left", pad = "0"), "-", 1),
          week_start = ISOweek2date(year_iso_weekday)) %>%
-  left_join(polys_idsonly %>% select(GID_0, COUNTRY, GID_1, pop_size)) %>%
-  mutate(fatal_100k = cum_fatalities/pop_size * 100000) %>%
+  left_join(polys_idsonly %>% select(GID_0, COUNTRY, GID_1, adm1_pop_size)) %>%
+  mutate(fatal_100k = cum_fatalities/adm1_pop_size * 100000) %>%
   filter(!is.na(Vax_coverage)) %>%
   group_by(GID_1) %>%
   mutate(Vax_cov_wavg = mean(Vax_coverage))
 
 
-write_csv(timeseries_full, "data/clean/full_timeseries_updatedNov24.csv")
+write_csv(timeseries_full, "data/clean/full_timeseries_updatedMar25.csv")
+
+
+######### timeseries data set for outcome of vaccine coverage #################
+
+rollsum_4yr_yr <- tibbletime::rollify(sum, window = 4)
+
+acled_ts_yr = acled_ts %>% 
+  left_join(acled_ts2, by = join_by(GID_1, year, isoweek)) %>%
+  arrange(year, isoweek) %>%
+  mutate(n_conflict_events_isoweek_adm1 = ifelse(is.na(n_conflict_events_isoweek_adm1), 0, n_conflict_events_isoweek_adm1),
+         n_fatalities_isoweek_adm1 = ifelse(is.na(n_fatalities_isoweek_adm1), 0, n_fatalities_isoweek_adm1)) %>%
+  group_by(GID_1, year) %>%
+  mutate(n_conflict_events_yr_adm1 = sum(n_conflict_events_isoweek_adm1),
+         n_fatalities_yr_adm1 = sum(n_fatalities_isoweek_adm1)) %>%
+  ungroup() %>%
+  select(year, GID_1, n_conflict_events_yr_adm1, n_fatalities_yr_adm1) %>%
+  distinct() %>%
+  group_by(GID_1) %>%
+  arrange(year) %>%
+  mutate(cum_conflict_4yr = rollsum_4yr_yr(n_conflict_events_yr_adm1),
+         cum_fatalities_4yr = rollsum_4yr_yr(n_fatalities_yr_adm1)) 
+
+ts_vax = dhs_ts2 %>%
+  left_join(acled_ts_yr, by = join_by("GID_1", "DHS_Survey_Year" == "year")) %>%
+  filter(!is.na(cum_conflict_4yr))
+
+
+timeseries_vax = ts_vax %>%
+  left_join(polys_idsonly %>% select(GID_0, COUNTRY, GID_1, adm1_pop_size)) %>%
+  mutate(fatal_100k = cum_fatalities_4yr/adm1_pop_size * 100000)
+
+
+write_csv(timeseries_vax, "data/clean/vax_timeseries.csv")
