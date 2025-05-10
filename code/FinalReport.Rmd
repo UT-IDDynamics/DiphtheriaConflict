@@ -24,6 +24,7 @@ library(DiagrammeR)
 library(lme4)
 library(gtsummary)
 library(broom.mixed)
+library(glmmTMB)
 
 ```
 
@@ -144,6 +145,8 @@ plot(sim)
 #### Violin plot
 
 Conflict-related fatalities
+
+Figure 3A
 ```{r}
 library(ggbeeswarm)
 mycolors = c("#67587c", "#c0653d")
@@ -175,6 +178,7 @@ swarm_plot = ggplot(static %>%
 swarm_plot
 
 ```
+Summary statistics of conflict-related fatalities by diphtheria status
 ```{r}
 
 static %>% 
@@ -189,11 +193,13 @@ static %>%
 
 #### Load data
 ```{r}
-ts = read_csv("../data/clean/full_timeseries_updatedNov24.csv")
+ts = read_csv("../data/clean/full_timeseries_updatedMar25.csv")
 
 ```
 
 Vaccination coverage
+
+Figure 3B
 ```{r}
 library(ggbeeswarm)
 mycolors = c("#67587c", "#c0653d")
@@ -226,16 +232,18 @@ swarm_plot_vax
 
 ```
 
+Combining Figure 3A + 3B together.
 ```{r}
 
 library(cowplot)
 plot_grid(swarm_plot, swarm_plot_vax, labels = c("A", "B"), nrow = 2)
 
+
 ```
 
 
 
-
+Get summary statistics for the vaccination coverage by diphtheria status.
 ```{r}
 
 static %>% left_join(vax_avg) %>%
@@ -265,6 +273,9 @@ timeplot_diphtheria = ggplot(ts_freq_poly) +
   xlab("Year")
   
 timeplot_diphtheria
+
+
+
 ```
 
 
@@ -283,6 +294,19 @@ mod_coef = exp(confint(mod2, method = "Wald"))
 mod_coef
 
 summary_mod2$AICtab
+
+```
+
+
+```{r}
+
+#check model assumptions
+
+sim <- simulateResiduals(fittedModel = mod2, 
+                         n = 250)
+plot(sim) 
+
+plotResiduals(sim, rank = TRUE, form = ts$Vax_coverage)
 
 ```
 
@@ -318,12 +342,12 @@ ggplot(ts) +
 #### Model 3: Now with vaccine as a quadratic term
 ```{r}
 
-ts = ts %>%
+
+ts_sq = ts %>%
   mutate(Vax_coverage_rescaled = scale(Vax_coverage),
-         Vax_coverage_squared = Vax_coverage**2,
-         Vax_coverage_squared_rescaled = scale(Vax_coverage_squared))
+         Vax_coverage_squared_rescaled = Vax_coverage_rescaled**2)
 mod3 = glmer(outbreak_status ~ Vax_coverage_rescaled + Vax_coverage_squared_rescaled + log(fatal_100k+1) + (1|GID_1) + (1|GID_0),
-            data = ts,
+            data = ts_sq,
             family = binomial(link = "logit"))
 summary_mod3 = summary(mod3)
 summary_mod3
@@ -332,12 +356,27 @@ exp(summary_mod3$coefficients)
 summary_mod3$AICtab
 
 ```
+
+```{r}
+
+#check model assumptions
+
+sim_mod3 <- simulateResiduals(fittedModel = mod3, 
+                         n = 250)
+sim_mod3
+
+plotResiduals(sim_mod3, rank = TRUE, form = ts_sq$Vax_coverage_rescaled)
+
+```
+
 #### Plot predicted for model 3
+
+
 ```{r}
 min_fatalities = min(ts$fatal_100k)
 max_fatalities = max(ts$fatal_100k)
 fatal_100k = data.frame(fatal_100k = seq.int(min_fatalities, max_fatalities, length.out = 500))
-predicted_data_ts = ts %>% 
+predicted_data_ts = ts_sq %>% 
   select(GID_0, GID_1, Vax_coverage_rescaled, Vax_coverage_squared_rescaled) %>%
   group_by(GID_0, GID_1) %>%
   summarise(Vax_coverage_rescaled = mean(Vax_coverage_rescaled),
@@ -351,6 +390,9 @@ predicted_data_ts = ts %>%
 predicted_data_ts$outbreak_status = predict(
   mod3, predicted_data_ts, type="response")
 ```
+
+
+Code for plotting Figure 5
 ```{r}
 
 mycolors = c("#67587c", "#c0653d")
@@ -377,6 +419,51 @@ ggplot() +
 
 ```
 
+Supplemental Figure 1
+```{r}
+# Plot Predicted data with vaccine coverage on x axis
+min_cov = min(ts_sq$Vax_coverage)
+max_cov = max(ts_sq$Vax_coverage)
+vax_min_max = data.frame(Vax_coverage = seq.int(min_cov, max_cov, length.out = 100))
+predicted_data_ts_vax = ts_sq %>% 
+  select(GID_0, GID_1, fatal_100k) %>%
+  group_by(GID_0, GID_1) %>%
+  summarise(fatal_100k = mean(fatal_100k)) %>%
+  cross_join(vax_min_max) %>%
+  ungroup() %>%
+  filter(!GID_1 %in% c("MLI.4_1")) %>%
+  mutate(Vax_coverage_rescaled = scale(Vax_coverage),
+         Vax_coverage_squared_rescaled = Vax_coverage_rescaled ** 2)
+
+
+# Fill predicted values using regression model
+predicted_data_ts_vax$outbreak_status = predict(
+  mod3, predicted_data_ts_vax, type="response")
+
+predicted_data_ts_vax$outbreak_status_mod2 = predict(
+  mod2, predicted_data_ts_vax, type="response")
+
+ggplot() + 
+  geom_line(aes(x = Vax_coverage, y = outbreak_status, group = GID_1), data = predicted_data_ts_vax, col = "grey", alpha = 0.3) + 
+   geom_point(data = ts %>% filter(outbreak_status == 1), 
+              aes(y = outbreak_status, 
+                             x = Vax_coverage, 
+                  color = "Present"), 
+                             col = mycolors[2], 
+              alpha= 0.05) + 
+  geom_point(data = ts %>% filter(outbreak_status == 0), 
+              aes(y = outbreak_status, 
+                             x = Vax_coverage, 
+                  color = "Absent"), 
+                             col = mycolors[1], 
+              alpha= 0.05) + 
+  theme_bw() +
+  xlab("DTP3 Childhood Vaccine coverage (%)") +
+  ylab("Predicted probability of a diphtheria presence") +
+  scale_y_continuous(sec.axis = sec_axis(~ ., breaks = c(0,1), name="Diphtheria status",
+                                 labels = c("Absent", "Present"))) 
+
+```
 
 #### Model 4: Vaccination as categorical term
 ```{r}
@@ -394,15 +481,18 @@ summary_mod4
 exp(summary_mod4$coefficients)
 
 
+
+
 ```
 
+Get the Wald confidence intervals for the coefficients of the fixed effects for models 3 and 4.
 ```{r}
 # Wald confint
 
 # model with vaccine as quadratic
 tidy(mod3,effects="fixed", conf.int = T) # gives Wald confint
 mod3_coef = exp(confint(mod3, method = "Wald"))
-
+mod3_coef
 
 # model with vaccine as categorical
 tidy(mod4,effects="fixed", conf.int = T) # gives Wald confint
@@ -410,5 +500,43 @@ mod4_coef = exp(confint(mod4, method = "Wald"))
 
 ```
 
+Look at AICs for competing models 
+```{r}
+summary_mod2$AICtab[1]
+summary_mod3$AICtab[1]
+summary_mod4$AICtab[1]
 
+summary_mod2$AICtab[1]-summary_mod3$AICtab[1]
+summary_mod4$AICtab[1]-summary_mod3$AICtab[1]
+```
+
+
+### Model vaccine coverage as the outcome
+
+Added since the original pre-print as part of the peer review process
+
+Load timeseries of childhood DTP3 vaccination coverage from DHS.
+```{r}
+timeseries_vax =  read_csv("../data/clean/vax_timeseries.csv")
+
+```
+
+
+Run model with conflict-related fatalities as predictor and vaccination coverage as outcome
+```{r}
+
+
+# Beta regression model
+modvax_beta = glmmTMB(DPT3_vacc_coverage/100 ~ log(fatal_100k+1) + (1|GID_1) + (1|GID_0),
+            data = timeseries_vax,
+            family = beta_family(link = "logit"))
+summary_modvax_beta = summary(modvax_beta)
+summary_modvax_beta
+exp(summary_modvax_beta$coefficients$cond)
+
+# model with vaccine as outcome
+modvax_beta_coef = exp(confint(modvax_beta, method = "Wald"))
+modvax_beta_coef
+
+```
 
